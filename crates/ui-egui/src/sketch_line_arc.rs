@@ -49,6 +49,15 @@ impl LineChain {
     }
 }
 
+/// Whether a snap id names a sketch point, which an undo can take away. The other snaps name a
+/// spot on geometry instead — `on:<curve>:x,y`, `mid:<curve>`, `<a>+<b>:x,y` (a crossing) and
+/// `vertex:x,y,z` (a model vertex) — and none of those resolves as a point.
+fn snap_names_a_point(id: &str) -> bool {
+    let spot = id.rsplit_once(':').map_or(id, |(_, tail)| tail);
+    let coordinates = spot.split(',').count() == 2 && spot.split(',').all(|n| n.trim().parse::<f64>().is_ok());
+    !(id.starts_with("mid:") || id.starts_with("on:") || id.starts_with("vertex:") || coordinates)
+}
+
 /// Undo can take away the segment a chain is drawing on from (#10016). The chain then goes back to
 /// the end of the last segment still there, or to where it began (as lines: there is nothing to
 /// be tangent to), and ends if that point has gone too. Clicking on from a point that no longer
@@ -58,6 +67,11 @@ pub fn rejoin(app: &SolveApp, t: &mut Tool) {
         return;
     }
     let Some(Some(current)) = t.pts.last().map(|p| p.1.clone()) else { return };
+    // A snap that names a spot on geometry, not a sketch point, cannot have vanished with an
+    // undo: rejoining on it dropped the point just clicked as soon as the pointer moved (#11181).
+    if !snap_names_a_point(&current) {
+        return;
+    }
     let state = app.session.world_state();
     let Some(ss) = app.session.active_sketch.and_then(|id| state.sketch(id)) else { return };
     let at = |id: &str| ss.sketch.resolve_point(id).and_then(|p| ss.sketch.point(p));

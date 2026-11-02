@@ -291,3 +291,23 @@ fn perpendicular_click_on_reference_endpoint_places_line() {
     assert!((end - p).x.abs() < 1e-6, "not through a.end: {p:?} {q:?}");
     assert!(d.x.abs() < 1e-6, "not perpendicular to a: {d:?}");
 }
+
+/// #11181: a solid line draws over a construction line, from the middle of it to a point past
+/// its end. The click on the construction line snaps onto the curve (`on:<curve>:x,y`); that snap
+/// names no sketch point, so the chain must not rejoin away from it when the pointer moves.
+#[test]
+fn a_solid_line_draws_over_a_construction_line() {
+    let mut h = Harness::new();
+    h.app.home.open = false;
+    h.app.run("sketch.create", json!({"plane":"XY"})).unwrap();
+    let made = h.app.run("sketch.line", json!({"points":[[0,0],[75,0]],"ids":["c1"],"infer":false})).unwrap();
+    let id = made["curves"][0].as_str().unwrap().to_string();
+    h.app.run("sketch.construction", json!({"curves":[id]})).unwrap();
+    h.settle();
+    h.step(&json!({"start":"sketch.line"})).unwrap();
+    for q in [[20., 0.], [70., 0.]] {
+        h.step(&json!({"click":{"sketch":q}})).unwrap();
+    }
+    let state = h.app.session.world_state();
+    assert_eq!(state.sketches[0].sketch.curves.len(), 2, "{:?}", h.app.status);
+}
